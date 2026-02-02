@@ -1,0 +1,156 @@
+/* this is a comment made using "command /" */
+
+body {
+    background-color: rgb(140, 140, 140);
+}
+
+#firstbox {
+    position: absolute;
+    color: rgba(0, 255, 247, 0.068);
+    text-shadow: 30px -3px 10px rgb(255, 255, 255);
+    width: 1fr;
+    height: 10px;
+    left: 100px;
+    right: 100px;
+    top: 200px;
+    font-size: 200px;
+    font-family: Helvetica;
+    text-align: justify;
+    z-index: 0;
+}
+
+#playme {
+    position: fixed;
+    top: 1vh;
+    right: 1vw;
+    color: white;
+    border: dotted 2px aquamarine;
+    padding: 10px;
+    text-align: right;
+    box-shadow: 0 0 20px white;
+}
+
+.numbers {
+    position: fixed;
+    width: fit-content;
+    line-height: 80%;
+    font-family: 'Franklin Gothic Medium';
+    opacity: 1;
+    z-index: 100;
+}
+
+#three{
+    font-size: 10em;
+    top: 40vh;
+    left: 30vw;
+    color: rgb(255, 255, 255);
+    text-shadow: 1px -3px 10px aquamarine;
+
+}
+
+#one {
+    font-size: 15em;
+    top: 15vh;
+    left: 70vw;
+    color: aquamarine;
+    text-shadow: 10px -3px 10px rgb(255, 255, 255);
+
+}
+
+#five {
+    font-size: 5em;
+    top: 80vh;
+    left: 70vw;
+    color: rgb(255, 255, 255);
+    text-shadow: 1px -3px 10px rgb(17, 0, 255);
+}
+
+
+.puzzle {
+    position: fixed;
+    width: 100pt;
+    height: 100pt;
+}
+
+
+#p1 {
+    box-shadow: 0 0 20px aquamarine;
+    background-image: linear-gradient(rgb(255, 255, 255), aquamarine, white);
+    z-index: 1000;
+}
+
+#p2 {
+    top: 30vh;
+    left: 100pt;
+    box-shadow: 0 0 20px rgb(255, 255, 255);
+    background-image: linear-gradient(rgb(255, 255, 255), rgb(43, 0, 255), white);
+    z-index: 1000;
+}
+
+#p3 {
+    top: 70vh;
+    left: 600pt;
+    box-shadow: 0 0 20px rgb(255, 255, 255);
+    background-image: linear-gradient(rgb(140, 140, 140), rgb(255, 255, 255), rgb(140, 140, 140));
+    z-index: 1000;
+}
+
+#p4 {
+    top: 40vh;
+    left: 200pt;
+    box-shadow: 0 0 20px rgb(255, 255, 255);
+    background-image: radial-gradient(circle at center, rgb(200, 180, 255),  rgb(240, 234, 255), rgb(141, 141, 141));
+    z-index: 1000;
+}
+
+#p5 {
+    top: 40vh;
+    left: 600pt;
+    box-shadow: 0 0 20px rgb(255, 255, 255);
+    background: radial-gradient(circle at center, #ffffff, #76fdcc, #8c8c8c);
+    z-index: 1000;
+}
+
+
+#p6 {
+    top: 80vh;
+    left: 500pt;
+    box-shadow: 0 0 20px rgb(255, 255, 255);
+    background: linear-gradient(120deg, #eaffff, #32ffff, #ffffff);
+    z-index: 1000;
+}
+#p7 {
+    top: 30vh;
+    left: 800pt;
+    box-shadow: 0 0 20px rgb(255, 255, 255);
+    background: linear-gradient(20deg, #ffffff, #f56fff, #ffffff);
+    z-index: 1000;
+}
+
+#p8 {
+    top: 10vh;
+    left: 90vw;
+    box-shadow: 0 0 20px rgb(255, 255, 255);
+    background: linear-gradient(210deg, #eaffff, #32ff98, #ffffff);
+    z-index: 1000;
+}
+
+#p9 {
+    top: 60vh;
+    left: 70vw;
+    box-shadow: 0 0 20px rgb(255, 255, 255);
+    background: linear-gradient(120deg, #eaffff, #f3ff84, #ffffff);
+    z-index: 1000;
+}
+
+#press{
+    position: fixed;
+    bottom: 5vh;
+    left: 5vw;
+    z-index: 10000000;
+}
+
+#video-1{
+     z-index: 10000000;
+
+}
