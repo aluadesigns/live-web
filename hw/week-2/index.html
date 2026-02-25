@@ -1,0 +1,51 @@
+<html>
+<head>
+    <script type="text/javascript">
+        function getNew() {
+
+        fetch('color.json', { cache: "no-store" }).then(function(response){
+            return response.json();
+        }).then(function(data) {
+            var r = data.background.r;
+            var g = data.background.g;
+            var b = data.background.b;
+
+            var hR = data.header.r;
+            var hG = data.header.g;
+            var hB = data.header.b;
+            var h = document.getElementById("header");
+           
+            document.body.style.backgroundColor = "rgb(" + r + "," + g + "," + b + ")";
+            h.style.color = "rgb(" + hR + "," + hG + "," + hB + ")";
+
+            getNew();
+        });
+
+    }
+
+    getNew();
+
+    //setInterval(getNew, 3000); //to repeat every 3 secs
+    
+    </script>
+<style>
+    #header {
+        position: absolute;
+        font-family: 'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+        font-size: 200;
+        width: 95vw;
+        left: 30px;
+    }
+
+    body {
+        /* background-color: aquamarine; */
+    }
+</style>
+
+</head>
+
+<body>
+ <div id="header">Change the rgb color values in the json file and change the color of my website!</div>
+</body>
+
+</html>

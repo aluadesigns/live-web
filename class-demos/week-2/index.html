@@ -1,0 +1,27 @@
+<html>
+<head>
+    <script type="text/javascript">
+        function getNew() {
+
+        fetch('text.txt', { cache: "no-store" }).then(function(response){
+            return response.text();
+        }).then(function(data) {
+            console.log(data);
+            document.body.innerHTML = data;
+            getNew();
+        });
+
+    }
+
+    getNew();
+    
+    </script>
+    <!-- I am telling the browser by saying http-equiv and telling to refersh every 5secs-->
+    <!-- <meta http-equiv="refresh" content="5">  -->
+</head>
+
+<body>
+ i like live web
+</body>
+
+</html>

@@ -1,0 +1,42 @@
+<html>
+	<head>
+        <link rel="stylesheet" href="style.css" />
+		<script type="text/javascript" src="/socket.io/socket.io.js"></script>
+		<script type="text/javascript" src="main.js"></script>	
+	</head>
+ <body>
+
+<!-- before user enters -->
+ <div id="entry">
+
+<div id="welcome">Welcome!</div>
+<div id="namebox">
+<input type="text" id="name" placeholder="Enter Your Name"><br>
+<input type="submit" value="join!" id="join">
+</div>
+
+</div>
+
+<!-- after user enters -->
+<div id="chat">
+
+<div id="users"></div>
+<div id="chatbox">
+<input type="text" id="message" name="message" placeholder="type! type! type!">
+<input type="submit" value="submit" id="sendmessage">
+</div>
+
+<!-- messagebox --> 
+<div id="messagebox">
+<div id="time"></div>
+ <div id="messages"></div>
+</div>
+
+<canvas id="draw" width="500" height="500"></canvas>
+ </div>
+
+
+</body>
+</html>
+
+<!-- entry doesn't work for each person! -->

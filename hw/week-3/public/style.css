@@ -1,0 +1,66 @@
+body{
+    font-family:'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+    margin: 0;
+    background-color: rgb(245, 245, 245);
+}
+
+#entry{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+#welcome{
+    position: absolute;
+    font-size: 18vw;
+    display: flex;
+    width: 100vw;
+    justify-content: center;
+    overflow: hidden;
+}
+
+#namebox{
+    position: absolute;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    scale: 1;
+    overflow: hidden;
+}
+
+#chat{
+    display: flex;
+    height: 100vh;
+}
+
+
+#users{
+    width: 10vw;
+    margin: 10px;
+    /* background-color: rgb(182, 255, 255); */
+}
+
+#chatbox{
+    display: flex;
+    justify-content: center;
+    position: fixed;
+    top: 50vh;
+    left: 45vw;
+}
+
+
+#messagebox{
+    display: flex;
+    position: absolute;
+    left: 15vw;
+}
+
+#time{
+    width: 100px;
+    color: grey;
+}
+
+#messages{
+    flex: 1;
+}
