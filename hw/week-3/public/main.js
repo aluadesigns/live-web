@@ -4,68 +4,53 @@ let cntx;
 
 window.onload = () => {
   start();
+  let myp5 = new p5(myCanvas, 'canvas');
 };
 
 const start = () => {
 
     var socket = io.connect();
-			
-	socket.on('connect', function() { 
+
+	socket.on('connect', () => { 
 		console.log("Connected");
-			});
-        
-            
-        document.getElementById("chat").style.display = "none";
+	});
+    
+    //don't display the chat before joining
+    document.getElementById("chat").style.display = "none";
 
-        
-        // canvas
-        canvas = document.getElementById("draw");
-        cntx = canvas.getContext('2d');
-
-
-        document.getElementById("join").addEventListener("click", () =>{
+    
+    //when the users clicks on join, emit the name that they entered 
+    document.getElementById("join").addEventListener("click", () =>{
         const name = document.getElementById("name").value;
         socket.emit('name', name);
-        });
-        socket.on('move', (data)=>{
-            io.emit() //?
-            cntx.filRect(data.x, data.y, 40, 60);
+    });
 
-        })
+    //displaying who joined and switching from entry to chat
+    socket.on('name', function(name){
+        document.getElementById('users').innerHTML = name + " joined!" + "<br>" + document.getElementById('users').innerHTML;
+        document.getElementById("chat").style.display = "block";
+        document.getElementById("entry").style.display = "none";
+    });
 
-        canvas.addEventListener('mousemove', (e)=>{
-            console.log(e);
-            socket.emit('move', {x:e.x, y:e.y})
-        })
-
-
-
-        socket.on('name', function(name){
-            document.getElementById('users').innerHTML = name + " joined!" + "<br>" + document.getElementById('users').innerHTML;
-            document.getElementById("chat").style.display = "block";
-            document.getElementById("entry").style.display = "none";
-        });
-
-        
-        document.getElementById("sendmessage").addEventListener("click", () =>{
-            const message = document.getElementById("message").value;
-            socket.emit('chatmessage', message);
+    //sending the message to the server
+    document.getElementById("sendmessage").addEventListener("click", () =>{
+        const message = document.getElementById("message").value;
+        socket.emit('chatmessage', message);
             
-            document.getElementById("message").value = "";
+        document.getElementById("message").value = ""; //clear the textbox
+        document.getElementById("message").placeholder = "keep typing!"; 
+    });
 
-        });
-
-        document.getElementById("message").addEventListener("keydown", (e) =>{
+    //send messages on enter
+    document.getElementById("message").addEventListener("keydown", (e) =>{
             if (e.key == "Enter" && !e.shiftKey) {
                 e.preventDefault;
                 document.getElementById("sendmessage").click();
             }
-        });
+    });
 
-
-
-			// Receive from any event
-			socket.on('chatmessage', function (messageinfo) {
+	// displaying the messages
+	socket.on('chatmessage', function (messageinfo) {
 				console.log(message);
                 const name = socket.name;
                 const time = new Date(messageinfo.time).toLocaleTimeString(); //time display
@@ -74,8 +59,6 @@ const start = () => {
 
             //     const random = (Math.random()*1000-20);
             //     document.getElementById("messagebox").style.transform = `translate(${random}px)`;
-			});
-
-
+	});
 
  };
