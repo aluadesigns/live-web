@@ -8,6 +8,10 @@
 
 <!-- cursor -->
 <div id="cursor"></div>
+<!-- draw mode cursor -->
+<img id="dcursor" src="draw.png" />
+<!-- erase cursor -->
+ <div id="erasecur">erase</div>
 
 
 <!-- before user enters -->
@@ -35,13 +39,23 @@
             <div id="messages"></div>
         </div>
     
-    <!-- canvas -->
-    <canvas id="draw"></canvas>
-
+        <!-- canvas -->
+        <canvas id="draw"></canvas>
 
     </div>
 
-<video id="thevideo"></video>
+    <!-- instructions -->
+    <div id="instructions">press "/" for draw mode</div>
+
+    <!-- video toggle -->
+    <div id="vinst">toggle to turn video on/off</div>
+
+    <div id="vtoggle" class="on"></div>
+    <video id="thevideo"></video>
+
+    <!-- erase and clear drawing -->
+     <div id="erase">erase</div>
+     <!-- <div id="clear">clear all</div> -->
 
 
 <!-- end of chat -->

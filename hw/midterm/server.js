@@ -23,7 +23,7 @@ app.get('/', function (req, res) {
 // We pass in the Express object
 const httpsServer = https.createServer(credentials,app);
 // Listen on port 8080
-httpsServer.listen(8080); //443 is default for https
+httpsServer.listen(443); //443 is default for https
 
 // WebSocket Portion
 // WebSockets work with the HTTP server
@@ -60,12 +60,24 @@ io.sockets.on('connection',
 
         socket.on('draw', (pos) => {
             const drawdata = {
+                startX: pos.startX,
+                startY: pos.startY,  
                 x: pos.x,
-                y: pos.y
+                y: pos.y,
+                type: pos.type
             }
             io.emit('draw', drawdata);
         })
 
+        //listening for video and emiting it to everyone
+        socket.on('video', (v) => {
+            const imagedata = {
+                img: v.img,
+                x: v.sendX,
+                y: v.sendY
+            }
+            io.emit('video', imagedata);
+        });
 
 
 
