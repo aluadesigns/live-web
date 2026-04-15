@@ -24,7 +24,6 @@ const start = () => {
 
 
     //when the user joins, send the name that they entered
-
     document.getElementById("join").addEventListener("click", () => {
         const name = document.getElementById("name").value;
         socket.emit('newuser', name);
@@ -62,8 +61,10 @@ const start = () => {
             sendX: x,
             sendY: y
         });
+
     });
 
+    //displaying the username as the cursor
     socket.on('cursor', (cursordata) => {
         const cursor = document.getElementById('cursor');
         cursor.innerHTML = cursordata.name;
@@ -75,38 +76,33 @@ const start = () => {
         console.log(cursordata.name, "x: " + cursordata.x, "y: " + cursordata.y );
     });
 
+
     //ADDING VIDEO!!
-
-    // The video element on the page to display the webcam
     let video = document.getElementById('thevideo');
-
-    // Constraints - what do we want?
     let constraints = { audio: false, video: true }
 
-    // Prompt the user for permission, get the stream
+    // user permission, get the stream
     navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
-	/* Use the stream */
-	
-	    // Attach to our video object
+
 	    video.srcObject = stream;
-	
-	    // Wait for the stream to load enough to play
 	    video.onloadedmetadata = function(e) {
 		    video.play();
 	    };
+
     })
+
     .catch(function(err) {
-	    /* Handle the error */
 	    alert(err);  
     });
 		
 
-    //DRAW section doesn't work yet, still figuring it out!
+    //DRAW section doesn't fully work yet, still figuring it out!
+
+    canvas = document.getElementById("draw");
+    cntx = canvas.getContext("2d"); //gives the 2d drawing api
+
 
     function drawcanvas() {
-        canvas = document.getElementById("draw");
-        cntx = canvas.getContext("2d"); //gives the 2d drawing api
-
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
@@ -146,7 +142,7 @@ const start = () => {
     //sending the message to the server on enter only
     document.addEventListener("keydown", (e) =>{
         if (e.key == "Enter" && !e.shiftKey) {
-                e.preventDefault();
+            e.preventDefault();
             const message = document.getElementById("message").value;
             socket.emit('chatmessage', {
                 text: message,
@@ -157,9 +153,32 @@ const start = () => {
             document.getElementById("message").placeholder = "keep typing!";
             document.getElementById("message").value = "";
 
+            cntx.drawImage(video, 0, 0);
+            const b64image = canvas.toDataURL();
+            
+
+            socket.emit('video', {
+                img: b64image,
+                sendX: x,
+                sendY: y
+            });
+
         }
     });
 
+
+    socket.on('video', (imagedata) => {
+        const cursorimg = document.createElement("IMG");
+        cursorimg.src = imagedata.img;
+        
+        cursorimg.style.position = "absolute";
+        cursorimg.style.left = imagedata.x + "px";
+        cursorimg.style.top = imagedata.y - 20 + "px";
+        cursorimg.style.width = "100px";
+        cursorimg.style.borderRadius = "10%";
+
+        document.body.appendChild(cursorimg);
+    })
 
 
 	// displaying the messages

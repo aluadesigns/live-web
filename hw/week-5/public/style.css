@@ -2,7 +2,7 @@ body{
     font-family:'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
     margin: 0;
     background-color: rgb(245, 245, 245);
-    /* overflow: hidden; */
+    overflow: hidden;
 }
 
 #entry{
@@ -91,11 +91,11 @@ body{
 } 
 
 
-#thevideo
-{
-    width: 30px;
-    height: 30px;
-    border-radius: 100%;
+#thevideo{
+    width: 70px;
+    border-radius: 10%;
+    display: none;
+
     transform: rotateY(180deg);
     -webkit-transform:rotateY(180deg); /* Safari and Chrome */
     -moz-transform:rotateY(180deg); /* Firefox */

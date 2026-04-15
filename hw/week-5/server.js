@@ -66,6 +66,15 @@ io.sockets.on('connection',
             io.emit('draw', drawdata);
         })
 
+        //listening for video and emiting it to everyone
+        socket.on('video', (v) => {
+            const imagedata = {
+                img: v.img,
+                x: v.sendX,
+                y: v.sendY
+            }
+            io.emit('video', imagedata);
+        });
 
 
 
