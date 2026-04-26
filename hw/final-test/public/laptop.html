@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proximity — Laptop</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div id="start" class="start-screen">
+  <h1>proximity — laptop</h1>
+  <p class="session-tag">session: <span id="sess-name">?</span></p>
+  <button id="startBtn" class="btn">begin</button>
+</div>
+
+<div id="stage" class="stage">
+  <!-- Hidden local video — feeds MediaPipe tracking, never visible -->
+  <video id="local-video" playsinline muted></video>
+
+  <!-- Peer video — full screen, opacity controlled by JS based on distance -->
+  <video id="peer-video" playsinline autoplay muted></video>
+
+  <canvas id="overlay"></canvas>
+
+  <div id="hud">
+    <div class="session">SESSION <span id="hud-sess">?</span></div>
+    <div class="row">my laptop:    <span id="me-lap" class="ok">on</span></div>
+    <div class="row">my phone:     <span id="me-phone" class="pending">waiting</span></div>
+    <div class="row">peer laptop:  <span id="peer-lap" class="pending">waiting</span></div>
+    <div class="row">peer phone:   <span id="peer-phone" class="pending">waiting</span></div>
+    <div class="row">distance:     <span id="dist-val">—</span></div>
+  </div>
+
+  <div id="qr-panel">
+    <canvas id="qr-canvas" width="160" height="160"></canvas>
+    <div class="label">scan with phone</div>
+  </div>
+</div>
+
+<!-- Vendor libs -->
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<script src="/vendor/qrcode.min.js"></script>
+
+<!-- Modules -->
+<script src="/js/net.js"></script>
+<script src="/js/tracking.js"></script>
+<script src="/js/rtc-video.js"></script>
+<script src="/js/laptop.js"></script>
+</body>
+</html>

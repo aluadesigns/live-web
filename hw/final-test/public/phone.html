@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Proximity — Phone</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="phone-body">
+
+<h1>proximity</h1>
+<p class="session-tag">session <span id="sess">?</span></p>
+
+<button id="startBtn" class="btn">begin · hold to ear</button>
+<div id="orb" style="display:none"></div>
+<div id="status"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/net.js"></script>
+<script src="/js/audio.js"></script>
+<script src="/js/rtc.js"></script>
+<script src="/js/phone.js"></script>
+</body>
+</html>
