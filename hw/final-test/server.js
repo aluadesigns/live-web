@@ -241,17 +241,27 @@ function computeAndBroadcast() {
 
   ['A','B'].forEach(s => {
     const peerPos = sessions[otherSession(s)].pos;
+    const myPos   = sessions[s].pos;
     const msg = { pos: peerPos, dist };
     const lap = sessions[s].laptop;
     if (lap) io.to(lap).emit('peer_pos', msg);
-    sessions[s].projectors.forEach(pid => io.to(pid).emit('peer_pos', msg));
+    // Projectors get an extended message with my-side blob presence too,
+    // so they can manage the welcome → active transition per-side.
+    sessions[s].projectors.forEach(pid => io.to(pid).emit('peer_pos', {
+      ...msg,
+      mySideBlob: !!myPos,
+    }));
   });
 }
 
 function sendStateToProjector(session, socketId) {
   const peerPos = sessions[otherSession(session)].pos;
-  io.to(socketId).emit('peer_pos', { pos: peerPos, dist: null });
-  // Also send current presence so projector can render the right state immediately
+  const myPos   = sessions[session].pos;
+  io.to(socketId).emit('peer_pos', {
+    pos: peerPos,
+    dist: null,
+    mySideBlob: !!myPos,
+  });
   io.to(socketId).emit('presence', {
     A: { laptop: !!sessions.A.laptop, phone: !!sessions.A.phone },
     B: { laptop: !!sessions.B.laptop, phone: !!sessions.B.phone },

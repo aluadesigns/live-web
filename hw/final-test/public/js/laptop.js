@@ -21,6 +21,12 @@ const CONFIG = {
   areaAspect:   16/9,
   shadowRadius: 60,
   shadowMaxOpacity: 0.6,
+  // Freeze-on-convergence: when the two participants get close enough, lock
+  // both their reported positions in place. Prevents the projected partner
+  // video from interfering with tracking via dark clothing/hair pixels.
+  freezeThreshold: 0.05,   // distance below which freeze triggers
+  unfreezeDrift:   0.05,   // raw position drift that breaks the freeze
+  maxFreezeSec:    8,      // max time to hold a freeze before auto-release
 };
 
 // ─── DOM ────────────────────────────────────────────────────────────────
@@ -220,7 +226,47 @@ function setStatus(el, ok) {
   el.className   = ok ? 'ok' : 'pending';
 }
 
-function sendPos() { ProxNet.sendPos(myFingerSquare); }
+// ─── Freeze-on-convergence state ─────────────────────────────────────────
+// When the two participants get close enough, both laptops freeze their
+// reported positions to prevent the projected video from interfering with
+// the tracker (dark clothing/hair in the projection causing centroid jumps).
+let frozen = false;
+let frozenAnchor = null;       // {x, y} — my reported position when freeze began
+let frozenStartTime = 0;
+let lastReported = null;       // last position actually sent to server
+
+function sendPos() {
+  const now = performance.now();
+  const raw = myFingerSquare;  // raw centroid-in-square coords (or null)
+
+  if (!frozen) {
+    // Normal pass-through: send the raw position.
+    lastReported = raw;
+    ProxNet.sendPos(raw);
+    // Check if we should enter freeze
+    if (raw && currentDist !== null && currentDist < CONFIG.freezeThreshold) {
+      frozen = true;
+      frozenAnchor = { ...raw };
+      frozenStartTime = now;
+    }
+  } else {
+    // Frozen: keep sending the anchor, ignoring raw drift.
+    ProxNet.sendPos(frozenAnchor);
+    lastReported = frozenAnchor;
+    // Check unfreeze conditions
+    let drift = 0;
+    if (raw) {
+      const dx = raw.x - frozenAnchor.x;
+      const dy = raw.y - frozenAnchor.y;
+      drift = Math.sqrt(dx*dx + dy*dy) / Math.SQRT2;
+    }
+    const elapsed = (now - frozenStartTime) / 1000;
+    if (drift > CONFIG.unfreezeDrift || elapsed > CONFIG.maxFreezeSec) {
+      frozen = false;
+      frozenAnchor = null;
+    }
+  }
+}
 
 function initVideoRTC() {
   ProxRTCVideo.onRemoteStream((stream) => {
@@ -323,8 +369,12 @@ function renderLoop() {
   ctx2d.clearRect(0, 0, innerWidth, innerHeight);
   const sq = roiScreenRect();
 
-  if (myFingerSquare)
-    drawShadow(sq.x + myFingerSquare.x * sq.w, sq.y + myFingerSquare.y * sq.h, 1.0, MY_COLOR);
+  // Show the position that's actually being SENT to the server (which is the
+  // frozen anchor when frozen, raw otherwise). This way the participant sees
+  // their reported position, not the jittery raw one during freeze.
+  const myPos = lastReported || myFingerSquare;
+  if (myPos)
+    drawShadow(sq.x + myPos.x * sq.w, sq.y + myPos.y * sq.h, 1.0, MY_COLOR);
 
   if (peerFingerSquare && currentDist !== null) {
     const proximity = Math.pow(1 - Math.min(1, currentDist), CONFIG.videoCurve);

@@ -1,10 +1,12 @@
 // js/projector.js — floor projection with state machine
 //
-// States:
-//   empty         — no phones connected. show QR + "scan me"
-//   waiting       — my phone connected, peer phone not. show "waiting for someone..."
-//   peer-waiting  — peer phone connected, my phone not. show small QR + "someone is waiting..."
-//   active        — both phones connected. show white floor + shadow + crossfade video
+// States (per side):
+//   empty         — my phone NOT connected, peer phone NOT connected
+//   waiting       — my phone connected, peer phone NOT connected
+//   peer-waiting  — my phone NOT connected, peer phone connected
+//   welcome       — both phones connected, my-side blob NOT detected yet
+//   active        — both phones connected, my-side blob detected
+//                   (white floor + peer shadow + crossfade video)
 
 const CONFIG = {
   shadowRadius: 120,
@@ -22,11 +24,14 @@ const peerVideo = document.getElementById('peer-video');
 const overlayEmpty       = document.getElementById('overlay-empty');
 const overlayWaiting     = document.getElementById('overlay-waiting');
 const overlayPeerWaiting = document.getElementById('overlay-peer-waiting');
+const overlayWelcome     = document.getElementById('overlay-welcome');
 
 let peerPos = null;
 let currentDist = null;
 let myPhoneOn = false;
 let peerPhoneOn = false;
+let mySideBlob = false;     // has THIS side's tracker reported a position
+let mySideEverStepped = false;  // has my-side blob ever been detected this session
 let state = null;
 
 let pc = null;
@@ -48,7 +53,6 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// Draw QR codes once, on load
 drawQR('qr-empty');
 drawQR('qr-peer');
 
@@ -57,12 +61,29 @@ ProxNet.connect({ session: SESSION, role: 'projector' });
 ProxNet.on('peer_pos', (m) => {
   peerPos = m.pos;
   currentDist = m.dist;
+  // Tracker reported a position this frame? Latch the "ever stepped" flag.
+  if (m.mySideBlob) {
+    mySideBlob = true;
+    mySideEverStepped = true;
+  } else {
+    mySideBlob = false;
+  }
+  updateState();
   updateVideoOpacity();
 });
 
 ProxNet.on('presence', (m) => {
+  const wasMyPhone   = myPhoneOn;
+  const wasPeerPhone = peerPhoneOn;
   myPhoneOn   = m[SESSION].phone;
   peerPhoneOn = m[SESSION === 'A' ? 'B' : 'A'].phone;
+
+  // If both phones disconnect, reset the welcome trigger so the next pair
+  // sees "step onto the light" again.
+  if (!myPhoneOn && !peerPhoneOn && (wasMyPhone || wasPeerPhone)) {
+    mySideEverStepped = false;
+  }
+
   updateState();
 });
 
@@ -93,10 +114,11 @@ ProxNet.on('rtc_projector_signal', async (m) => {
 
 function updateState() {
   let next;
-  if (myPhoneOn && peerPhoneOn)        next = 'active';
-  else if (myPhoneOn && !peerPhoneOn)  next = 'waiting';
-  else if (!myPhoneOn && peerPhoneOn)  next = 'peer-waiting';
-  else                                  next = 'empty';
+  if (!myPhoneOn && !peerPhoneOn)       next = 'empty';
+  else if (myPhoneOn && !peerPhoneOn)   next = 'waiting';
+  else if (!myPhoneOn && peerPhoneOn)   next = 'peer-waiting';
+  else if (!mySideEverStepped)          next = 'welcome';
+  else                                  next = 'active';
 
   if (next === state) return;
   state = next;
@@ -104,6 +126,7 @@ function updateState() {
   overlayEmpty.classList.toggle('active',       state === 'empty');
   overlayWaiting.classList.toggle('active',     state === 'waiting');
   overlayPeerWaiting.classList.toggle('active', state === 'peer-waiting');
+  overlayWelcome.classList.toggle('active',     state === 'welcome');
 }
 
 function updateVideoOpacity() {
@@ -134,7 +157,7 @@ function render() {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, innerWidth, innerHeight);
 
-  // Only draw the shadow when in active state (both phones connected)
+  // Only draw the partner's shadow when in active state AND we have a peer position
   if (state === 'active' && peerPos) {
     const x = peerPos.x * innerWidth;
     const y = peerPos.y * innerHeight;
@@ -154,5 +177,4 @@ function render() {
 }
 render();
 
-// Initialize state to 'empty' visually until first presence message arrives
 updateState();

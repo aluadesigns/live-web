@@ -26,14 +26,14 @@
     transform: scaleX(-1);
     z-index: 2;
   }
-  /* Overlay states */
+
+  /* Overlay base */
   .overlay {
     position: fixed; inset: 0;
     display: none;
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    gap: 2.5rem;
     z-index: 5;
     background: #fff;
     color: #1a1a1a;
@@ -41,21 +41,50 @@
     text-align: center;
   }
   .overlay.active { display: flex; }
-  .overlay canvas {
+
+  /* Three-column instruction layout (used by empty + peer-waiting) */
+  .instructions {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 5rem;
+    width: 100%;
+    max-width: 1400px;
+  }
+  .instructions canvas {
     width: 280px; height: 280px;
     display: block;
   }
-  .overlay .label {
-    font-size: 2rem;
-    letter-spacing: 0.2em;
+  .step {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .step.right { text-align: right; }
+  .step.left  { text-align: left; }
+  .step-num {
+    font-size: 0.9rem;
+    color: #888;
+    text-transform: uppercase;
+  }
+  .step-text {
+    font-size: 1.8rem;
+    line-height: 1.4;
+    text-transform: lowercase;
+  }
+
+  /* Bottom message for peer-waiting state */
+  .peer-message {
+    margin-top: 3rem;
+    font-size: 1.6rem;
+    text-transform: lowercase;
+  }
+
+  /* Plain center label (used for "waiting" and "step onto the light") */
+  .label {
+    font-size: 2.2rem;
     text-transform: lowercase;
     line-height: 1.5;
-  }
-  .overlay.small canvas {
-    width: 200px; height: 200px;
-  }
-  .overlay.small .label {
-    font-size: 1.4rem;
   }
 </style>
 </head>
@@ -64,18 +93,45 @@
 <canvas id="stage"></canvas>
 <video id="peer-video" playsinline autoplay muted></video>
 
+<!-- Empty state: instructions only -->
 <div id="overlay-empty" class="overlay">
-  <canvas id="qr-empty" width="280" height="280"></canvas>
-  <div class="label">unmute your phone and scan me</div>
+  <div class="instructions">
+    <div class="step right">
+      <div class="step-num">step 1</div>
+      <div class="step-text">unmute<br>your phone</div>
+    </div>
+    <canvas id="qr-empty" width="280" height="280"></canvas>
+    <div class="step left">
+      <div class="step-num">step 2</div>
+      <div class="step-text">scan the qr code<br>to connect</div>
+    </div>
+  </div>
 </div>
 
+<!-- Waiting state: my side scanned, peer hasn't yet -->
 <div id="overlay-waiting" class="overlay">
   <div class="label">waiting for someone<br>on the other side</div>
 </div>
 
-<div id="overlay-peer-waiting" class="overlay small">
-  <canvas id="qr-peer" width="200" height="200"></canvas>
-  <div class="label">someone is waiting<br>for you on the other side</div>
+<!-- Peer-waiting state: peer scanned first, my side hasn't yet -->
+<div id="overlay-peer-waiting" class="overlay">
+  <div class="instructions">
+    <div class="step right">
+      <div class="step-num">step 1</div>
+      <div class="step-text">unmute<br>your phone</div>
+    </div>
+    <canvas id="qr-peer" width="280" height="280"></canvas>
+    <div class="step left">
+      <div class="step-num">step 2</div>
+      <div class="step-text">scan the qr code<br>to connect</div>
+    </div>
+  </div>
+  <div class="peer-message">someone on the other side is waiting for you</div>
+</div>
+
+<!-- Welcome state: both connected, waiting for someone to step in -->
+<div id="overlay-welcome" class="overlay">
+  <div class="label">step onto the light</div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
