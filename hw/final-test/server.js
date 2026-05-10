@@ -223,16 +223,21 @@ function maybeStartAllProjectorVideos() {
 
 function computeAndBroadcast() {
   const a = sessions.A.pos, b = sessions.B.pos;
+  const bothPhonesPresent = !!(sessions.A.phone && sessions.B.phone);
   let dist = null;
   if (a && b) {
     const dx = a.x - b.x, dy = a.y - b.y;
     dist = Math.min(1, Math.sqrt(dx*dx + dy*dy) / Math.SQRT2);
   }
 
-  ['A','B'].forEach(s => {
-    const id = sessions[s].phone;
-    if (id) io.to(id).emit('distance', { dist });
-  });
+  // Only broadcast distance to phones if BOTH phones are connected.
+  // This keeps the audio silent until the experience is paired.
+  if (bothPhonesPresent) {
+    ['A','B'].forEach(s => {
+      const id = sessions[s].phone;
+      if (id) io.to(id).emit('distance', { dist });
+    });
+  }
 
   ['A','B'].forEach(s => {
     const peerPos = sessions[otherSession(s)].pos;
@@ -246,6 +251,11 @@ function computeAndBroadcast() {
 function sendStateToProjector(session, socketId) {
   const peerPos = sessions[otherSession(session)].pos;
   io.to(socketId).emit('peer_pos', { pos: peerPos, dist: null });
+  // Also send current presence so projector can render the right state immediately
+  io.to(socketId).emit('presence', {
+    A: { laptop: !!sessions.A.laptop, phone: !!sessions.A.phone },
+    B: { laptop: !!sessions.B.laptop, phone: !!sessions.B.phone },
+  });
 }
 
 function broadcastPresence() {
