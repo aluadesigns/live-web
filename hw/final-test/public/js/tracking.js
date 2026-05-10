@@ -9,9 +9,9 @@
 
 (function () {
   const CONFIG = {
-    darkThreshold:   110,
+    darkThreshold:   70,
     processWidth:    160,
-    minBlobArea:     150,    // raised from 30 to filter out floor grain/noise
+    minBlobArea:     300,    // ignore noise blobs smaller than this
     smoothing:       0.5,
     debug:           true,
   };
@@ -88,6 +88,9 @@
 
     const visited = new Uint8Array(W * H);
     const stack = new Int32Array(W * H);
+    // Mask of pixels that belong to a blob above minBlobArea (for debug drawing)
+    const bigBlobMask = new Uint8Array(W * H);
+    const blobPixels = new Int32Array(W * H);
     let bestCount = 0, bestSumX = 0, bestSumY = 0;
 
     for (let y = roiY0; y < roiY1; y++) {
@@ -95,23 +98,29 @@
         const idx = y * W + x;
         if (!mask[idx] || visited[idx]) continue;
         let top = 0;
+        let pxCount = 0;
         stack[top++] = idx;
         visited[idx] = 1;
+        blobPixels[pxCount++] = idx;
         let count = 0, sumX = 0, sumY = 0;
         while (top > 0) {
           const p = stack[--top];
           const px = p % W, py = (p / W) | 0;
           count++; sumX += px; sumY += py;
-          if (px > roiX0     && mask[p-1] && !visited[p-1]) { visited[p-1] = 1; stack[top++] = p-1; }
-          if (px < roiX1 - 1 && mask[p+1] && !visited[p+1]) { visited[p+1] = 1; stack[top++] = p+1; }
-          if (py > roiY0     && mask[p-W] && !visited[p-W]) { visited[p-W] = 1; stack[top++] = p-W; }
-          if (py < roiY1 - 1 && mask[p+W] && !visited[p+W]) { visited[p+W] = 1; stack[top++] = p+W; }
+          if (px > roiX0     && mask[p-1] && !visited[p-1]) { visited[p-1] = 1; stack[top++] = p-1; blobPixels[pxCount++] = p-1; }
+          if (px < roiX1 - 1 && mask[p+1] && !visited[p+1]) { visited[p+1] = 1; stack[top++] = p+1; blobPixels[pxCount++] = p+1; }
+          if (py > roiY0     && mask[p-W] && !visited[p-W]) { visited[p-W] = 1; stack[top++] = p-W; blobPixels[pxCount++] = p-W; }
+          if (py < roiY1 - 1 && mask[p+W] && !visited[p+W]) { visited[p+W] = 1; stack[top++] = p+W; blobPixels[pxCount++] = p+W; }
+        }
+        // Record this blob as "big enough" if it passes the threshold
+        if (count >= CONFIG.minBlobArea) {
+          for (let i = 0; i < pxCount; i++) bigBlobMask[blobPixels[i]] = 1;
         }
         if (count > bestCount) { bestCount = count; bestSumX = sumX; bestSumY = sumY; }
       }
     }
 
-    if (CONFIG.debug && dctx) drawDebug(mask, W, H, roiX0, roiY0, roiX1, roiY1, bestCount, bestSumX, bestSumY);
+    if (CONFIG.debug && dctx) drawDebug(bigBlobMask, W, H, roiX0, roiY0, roiX1, roiY1, bestCount, bestSumX, bestSumY);
 
     if (bestCount < CONFIG.minBlobArea) {
       onUpdate && onUpdate(smoothed);

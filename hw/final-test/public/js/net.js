@@ -1,7 +1,7 @@
-// js/net.js — Socket.IO wrapper for proximity prototype
+// js/net.js — Socket.IO wrapper
 
 (function () {
-  let socket;
+  let socket = null;
   const handlers = {};
 
   function connect({ session, role }) {
@@ -9,42 +9,46 @@
     socket.on('connect', () => {
       socket.emit('hello', { session, role });
     });
-    socket.on('distance',          (m) => emit('distance',          m));
-    socket.on('peer_pos',          (m) => emit('peer_pos',          m));
-    socket.on('presence',          (m) => emit('presence',          m));
-    socket.on('error_msg',         (m) => emit('error',             m));
-    // Phone audio RTC
-    socket.on('start_call',        (m) => emit('start_call',        m));
-    socket.on('end_call',          (m) => emit('end_call',          m));
-    socket.on('rtc_signal',        (m) => emit('rtc_signal',        m));
-    // Laptop video RTC
-    socket.on('start_video_call',  (m) => emit('start_video_call',  m));
-    socket.on('end_video_call',    (m) => emit('end_video_call',    m));
-    socket.on('rtc_video_signal',  (m) => emit('rtc_video_signal',  m));
+    socket.on('error_msg', (msg) => fire('error', msg));
+    socket.on('distance', (m)   => fire('distance', m));
+    socket.on('peer_pos', (m)   => fire('peer_pos', m));
+    socket.on('presence', (m)   => fire('presence', m));
+    socket.on('start_call', (m) => fire('start_call', m));
+    socket.on('end_call', (m)   => fire('end_call', m));
+    socket.on('rtc_signal', (m) => fire('rtc_signal', m));
+    socket.on('start_video_call', (m) => fire('start_video_call', m));
+    socket.on('end_video_call', (m)   => fire('end_video_call', m));
+    socket.on('rtc_video_signal', (m) => fire('rtc_video_signal', m));
+    // Projector relay events
+    socket.on('start_projector_video', (m) => fire('start_projector_video', m));
+    socket.on('rtc_projector_signal', (m)  => fire('rtc_projector_signal', m));
+    socket.on('projector_left', (m)        => fire('projector_left', m));
   }
 
-  function sendPos(p) {
-    if (!socket || !socket.connected) return;
-    socket.emit('pos', p ? { x: p.x, y: p.y } : { x: null, y: null });
+  function on(event, fn) {
+    (handlers[event] = handlers[event] || []).push(fn);
   }
 
-  function sendSignal(payload) {
-    if (!socket || !socket.connected) return;
-    socket.emit('rtc_signal', payload);
+  function fire(event, data) {
+    (handlers[event] || []).forEach(fn => fn(data));
   }
 
-  function sendVideoSignal(payload) {
-    if (!socket || !socket.connected) return;
-    socket.emit('rtc_video_signal', payload);
+  function sendPos(pos) {
+    if (socket) socket.emit('pos', pos);
   }
 
-  function on(event, handler) {
-    (handlers[event] = handlers[event] || []).push(handler);
+  function sendSignal(msg) {
+    if (socket) socket.emit('rtc_signal', msg);
   }
 
-  function emit(event, data) {
-    (handlers[event] || []).forEach(h => h(data));
+  function sendVideoSignal(msg) {
+    if (socket) socket.emit('rtc_video_signal', msg);
   }
 
-  window.ProxNet = { connect, sendPos, sendSignal, sendVideoSignal, on };
+  // Generic send for any event (used by projector relay)
+  function send(event, msg) {
+    if (socket) socket.emit(event, msg);
+  }
+
+  window.ProxNet = { connect, on, sendPos, sendSignal, sendVideoSignal, send };
 })();

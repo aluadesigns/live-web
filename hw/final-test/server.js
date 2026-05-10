@@ -24,13 +24,13 @@ const { Server } = require("socket.io");
 const io = new Server(httpsServer);
 
 // ─── Session state ───────────────────────────────────────────────────────
-// Each session has exactly one laptop and one phone. Projectors are
-// unlimited (an array) — they subscribe to a session and receive peer_pos
-// but don't themselves track or affect the session state.
 const sessions = {
   A: { laptop: null, phone: null, projectors: [], pos: null },
   B: { laptop: null, phone: null, projectors: [], pos: null },
 };
+
+// ─── Standalone video-test state ─────────────────────────────────────────
+const vt = { A: null, B: null };
 
 const otherSession = (s) => s === 'A' ? 'B' : 'A';
 
@@ -50,12 +50,12 @@ io.sockets.on('connection', (socket) => {
       socket.data.session = session;
       socket.data.role    = role;
       console.log(`  -> session=${session} role=projector`);
-      // Immediately push current peer position so the projector has something
       sendStateToProjector(session, socket.id);
+      // If peer's laptop is already connected, ask it to also stream to this projector
+      maybeStartProjectorVideo(session, socket.id);
       return;
     }
 
-    // laptop / phone: enforce single-occupancy slots
     if (sessions[session][role]) {
       socket.emit('error_msg', `${role} already connected for session ${session}`);
       socket.disconnect();
@@ -69,6 +69,8 @@ io.sockets.on('connection', (socket) => {
     computeAndBroadcast();
     maybeStartAudioCall();
     maybeStartVideoCall();
+    // If a peer projector is already waiting, kick off projector video for it
+    if (role === 'laptop') maybeStartAllProjectorVideos();
   });
 
   socket.on('pos', (msg) => {
@@ -93,12 +95,75 @@ io.sockets.on('connection', (socket) => {
     if (peerId) io.to(peerId).emit('rtc_video_signal', msg);
   });
 
+  // ─── Projector video signaling ───────────────────────────────────────
+  // Two-way relay between a projector and the peer's laptop.
+  // Each message includes which projector socket it's addressed to (or from).
+  socket.on('rtc_projector_signal', (msg) => {
+    // msg: { targetProjectorId?, ...sdp/ice }
+    if (socket.data.role === 'projector') {
+      // From projector to peer's laptop
+      const myS = socket.data.session;
+      const peerLaptop = sessions[otherSession(myS)].laptop;
+      if (peerLaptop) {
+        io.to(peerLaptop).emit('rtc_projector_signal', {
+          ...msg,
+          fromProjectorId: socket.id,
+          forSession: myS,
+        });
+      }
+    } else if (socket.data.role === 'laptop') {
+      // From laptop to a specific projector on the peer side
+      if (msg.targetProjectorId) {
+        io.to(msg.targetProjectorId).emit('rtc_projector_signal', msg);
+      }
+    }
+  });
+
+  // ─── Standalone video test (isolated from proximity sessions) ─────────
+  socket.on('vt_hello', (info) => {
+    const role = info && info.role;
+    if (!['A','B'].includes(role)) {
+      socket.emit('error_msg', 'bad vt role');
+      return;
+    }
+    if (vt[role]) {
+      socket.emit('error_msg', `vt ${role} already connected`);
+      return;
+    }
+    vt[role] = socket.id;
+    socket.data.vtRole = role;
+    console.log(`  -> vt role=${role}`);
+    if (vt.A && vt.B) {
+      io.to(vt.A).emit('vt_paired', { role: 'caller' });
+      io.to(vt.B).emit('vt_paired', { role: 'callee' });
+      console.log('  ~~ vt paired');
+    }
+  });
+
+  socket.on('vt_signal', (msg) => {
+    const r = socket.data.vtRole;
+    if (!r) return;
+    const peerId = vt[r === 'A' ? 'B' : 'A'];
+    if (peerId) io.to(peerId).emit('vt_signal', msg);
+  });
+
   socket.on('disconnect', () => {
+    if (socket.data.vtRole) {
+      const r = socket.data.vtRole;
+      vt[r] = null;
+      console.log(`  <- vt role=${r}`);
+      const peerId = vt[r === 'A' ? 'B' : 'A'];
+      if (peerId) io.to(peerId).emit('vt_peer_left');
+    }
+
     const s = socket.data.session, r = socket.data.role;
     if (!s || !r) return;
     if (r === 'projector') {
       sessions[s].projectors = sessions[s].projectors.filter(id => id !== socket.id);
       console.log(`  <- session=${s} role=projector`);
+      // Tell peer's laptop to tear down the projector's peer connection
+      const peerLaptop = sessions[otherSession(s)].laptop;
+      if (peerLaptop) io.to(peerLaptop).emit('projector_left', { projectorId: socket.id });
       return;
     }
     sessions[s][r] = null;
@@ -129,6 +194,33 @@ function maybeStartVideoCall() {
   }
 }
 
+// When a projector connects, if the peer's laptop is already streaming,
+// ask the peer's laptop to send its video to the new projector.
+function maybeStartProjectorVideo(session, projectorId) {
+  const peerLaptop = sessions[otherSession(session)].laptop;
+  if (peerLaptop) {
+    io.to(peerLaptop).emit('start_projector_video', {
+      projectorId,
+      forSession: session,
+    });
+  }
+}
+
+// When a peer's laptop joins, kick off projector video for any waiting projectors
+function maybeStartAllProjectorVideos() {
+  ['A','B'].forEach(s => {
+    const peerLaptop = sessions[otherSession(s)].laptop;
+    if (peerLaptop) {
+      sessions[s].projectors.forEach(pid => {
+        io.to(peerLaptop).emit('start_projector_video', {
+          projectorId: pid,
+          forSession: s,
+        });
+      });
+    }
+  });
+}
+
 function computeAndBroadcast() {
   const a = sessions.A.pos, b = sessions.B.pos;
   let dist = null;
@@ -145,10 +237,8 @@ function computeAndBroadcast() {
   ['A','B'].forEach(s => {
     const peerPos = sessions[otherSession(s)].pos;
     const msg = { pos: peerPos, dist };
-    // Send to the tracking laptop
     const lap = sessions[s].laptop;
     if (lap) io.to(lap).emit('peer_pos', msg);
-    // Send to every projector subscribed to this session
     sessions[s].projectors.forEach(pid => io.to(pid).emit('peer_pos', msg));
   });
 }

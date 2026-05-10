@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Test</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #000; overflow: hidden; cursor: none; }
+  #peer-video {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    background: #000;
+  }
+  #start {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 2rem;
+    background: #000;
+    color: #e8e8e8;
+    font-family: "Arial Narrow", Arial, sans-serif;
+    z-index: 10;
+  }
+  #start h1 {
+    font-weight: 400; font-size: 1rem;
+    letter-spacing: 0.3em; text-transform: uppercase;
+    opacity: 0.5;
+  }
+  #start .role-tag {
+    font-size: 0.75rem; opacity: 0.4; letter-spacing: 0.2em;
+  }
+  #start button {
+    background: transparent;
+    border: 1px solid #444;
+    color: #e8e8e8;
+    padding: 1.2rem 3rem;
+    font: inherit; font-size: 0.9rem;
+    letter-spacing: 0.25em; text-transform: uppercase;
+    cursor: pointer;
+  }
+  #start button:hover { background: #1a1a1a; }
+  #status {
+    position: fixed; top: 1rem; left: 1rem;
+    color: rgba(255,255,255,0.4);
+    font-family: "Arial Narrow", Arial, sans-serif;
+    font-size: 0.7rem; letter-spacing: 0.15em;
+    text-transform: uppercase;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+
+<div id="start">
+  <h1>video test</h1>
+  <p class="role-tag">role: <span id="role-tag">?</span></p>
+  <button id="startBtn">begin</button>
+</div>
+
+<video id="peer-video" playsinline autoplay></video>
+<div id="status">connecting…</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const params = new URLSearchParams(location.search);
+const ROLE   = (params.get('role') || 'A').toUpperCase();
+const CAM    = params.get('camera');  // optional substring to match camera label
+document.getElementById('role-tag').textContent = ROLE;
+
+const startBtn = document.getElementById('startBtn');
+const startScreen = document.getElementById('start');
+const peerVideo = document.getElementById('peer-video');
+const statusEl  = document.getElementById('status');
+
+let socket, pc, localStream;
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
+startBtn.addEventListener('click', async () => {
+  startBtn.disabled = true;
+  startBtn.textContent = 'loading…';
+  try {
+    await initCamera();
+    initSocket();
+    startScreen.style.display = 'none';
+  } catch (e) {
+    console.error(e);
+    startBtn.textContent = 'error — see console';
+  }
+});
+
+async function initCamera() {
+  // Get permission first so labels become available
+  let temp;
+  try {
+    temp = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+  } catch (e) { throw new Error('camera permission denied'); }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cams = devices.filter(d => d.kind === 'videoinput');
+  console.log('available cameras:', cams.map(c => c.label));
+  temp.getTracks().forEach(t => t.stop());
+
+  let chosen = cams[0];
+  if (CAM) {
+    const m = cams.find(c => c.label.toLowerCase().includes(CAM.toLowerCase()));
+    if (m) chosen = m;
+  }
+  console.log('using camera:', chosen.label);
+
+  localStream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      deviceId: { exact: chosen.deviceId },
+      width:  { ideal: 1280 },
+      height: { ideal: 720 },
+    },
+    audio: false,
+  });
+}
+
+function initSocket() {
+  socket = io();
+  socket.on('connect', () => {
+    socket.emit('vt_hello', { role: ROLE });
+    statusEl.textContent = 'waiting for peer';
+  });
+  socket.on('vt_paired', async (info) => {
+    statusEl.textContent = 'pairing';
+    await startPeerConnection(info.role === 'caller');
+  });
+  socket.on('vt_signal', (msg) => handleSignal(msg));
+  socket.on('vt_peer_left', () => {
+    statusEl.textContent = 'peer left — waiting';
+    if (pc) { try { pc.close(); } catch {} pc = null; }
+    peerVideo.srcObject = null;
+  });
+}
+
+async function startPeerConnection(isCaller) {
+  if (pc) { try { pc.close(); } catch {} }
+  pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  pc.ontrack = (e) => {
+    statusEl.textContent = 'connected';
+    setTimeout(() => statusEl.style.display = 'none', 2000);
+    peerVideo.srcObject = e.streams[0] || new MediaStream([e.track]);
+  };
+  pc.onicecandidate = (e) => {
+    if (e.candidate) socket.emit('vt_signal', { kind: 'ice', candidate: e.candidate });
+  };
+  pc.onconnectionstatechange = () => {
+    console.log('pc state:', pc.connectionState);
+  };
+
+  if (isCaller) {
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit('vt_signal', { kind: 'offer', sdp: offer });
+  }
+}
+
+async function handleSignal(msg) {
+  if (!pc) return;
+  try {
+    if (msg.kind === 'offer') {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit('vt_signal', { kind: 'answer', sdp: answer });
+    } else if (msg.kind === 'answer') {
+      await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+    } else if (msg.kind === 'ice') {
+      await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+    }
+  } catch (err) {
+    console.error('signal error:', err);
+  }
+}
+</script>
+</body>
+</html>

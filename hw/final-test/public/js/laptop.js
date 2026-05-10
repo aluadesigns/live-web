@@ -1,18 +1,27 @@
 // js/laptop.js — page logic for laptop.html
+//
+// Two cameras can be active at once:
+//   tracking camera  — used for blob/finger detection (e.g. overhead GoPro)
+//   video camera     — used for outgoing WebRTC video (e.g. front Logi)
+// If only one is configured, the same stream is used for both.
+
+const params  = new URLSearchParams(location.search);
+const SESSION = (params.get('session') || 'A').toUpperCase();
+const TRACKER = (params.get('tracker') || 'hat').toLowerCase();
 
 const CONFIG = {
   sendRate:   20,
   videoCurve: 4,
-  // Playable area in VIDEO coords. The tracker only watches inside this rect,
-  // and the white square on screen is drawn at the same place.
-  areaWidth:    0.34,
-  areaCenterX:  0.51,
-  areaCenterY:  0.68,
-  areaAspect:   16 / 9,
+  // Playable area in VIDEO coords. Aspect is 16:9 (the projector's aspect).
+  // Tune position via keyboard (arrows / [ ]) until the red box sits inside the
+  // projected area at roughly the same size.
+  areaWidth:    TRACKER === 'finger' ? 0.7  : 0.54,
+  areaCenterX:  TRACKER === 'finger' ? 0.50 : 0.48,
+  areaCenterY:  TRACKER === 'finger' ? 0.50 : 0.47,
+  areaAspect:   16/9,
+  shadowRadius: 60,
+  shadowMaxOpacity: 0.6,
 };
-
-const params  = new URLSearchParams(location.search);
-const SESSION = (params.get('session') || 'A').toUpperCase();
 
 // ─── DOM ────────────────────────────────────────────────────────────────
 const startScreen = document.getElementById('start');
@@ -36,17 +45,26 @@ elHudSess.textContent  = SESSION;
 let myFingerSquare    = null;
 let peerFingerSquare  = null;
 let currentDist       = null;
-let cameraStream      = null;
+let trackingStream    = null;   // for blob/finger tracking
+let videoStream       = null;   // for outgoing WebRTC video (peer + projectors)
+
+// Per-projector peer connections (we may stream to multiple projectors)
+const projectorPCs = new Map();
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
 
 startBtn.addEventListener('click', async () => {
   startBtn.disabled = true;
   startBtn.textContent = 'loading…';
   try {
-    await initCamera();
+    await initCameras();
     await ProxTracking.init(localVideo, onPoint);
     ProxTracking.setRegion(computeROI());
     initSocket();
     initVideoRTC();
+    initProjectorRelay();
     initQR();
     startScreen.style.display = 'none';
     stage.style.display = 'block';
@@ -69,52 +87,88 @@ function resize() {
   ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
-async function initCamera() {
-  let tempStream;
+// ─── Live ROI tuning via keyboard ───────────────────────────────────────
+// Arrows = move center, [ ] = shrink/grow, A/Z = wider/taller aspect
+// Hit P to log current values to copy back into CONFIG.
+window.addEventListener('keydown', (e) => {
+  const STEP = e.shiftKey ? 0.005 : 0.02;
+  let changed = true;
+  switch (e.key) {
+    case 'ArrowLeft':  CONFIG.areaCenterX -= STEP; break;
+    case 'ArrowRight': CONFIG.areaCenterX += STEP; break;
+    case 'ArrowUp':    CONFIG.areaCenterY -= STEP; break;
+    case 'ArrowDown':  CONFIG.areaCenterY += STEP; break;
+    case '[':          CONFIG.areaWidth   -= STEP; break;
+    case ']':          CONFIG.areaWidth   += STEP; break;
+    case 'a':          CONFIG.areaAspect  += STEP * 5; break;  // wider
+    case 'z':          CONFIG.areaAspect  -= STEP * 5; break;  // taller
+    case 'p':
+      console.log('CURRENT ROI:', JSON.stringify({
+        areaWidth:    +CONFIG.areaWidth.toFixed(3),
+        areaCenterX:  +CONFIG.areaCenterX.toFixed(3),
+        areaCenterY:  +CONFIG.areaCenterY.toFixed(3),
+        areaAspect:   +CONFIG.areaAspect.toFixed(3),
+      }, null, 2));
+      changed = false;
+      break;
+    default: changed = false;
+  }
+  if (changed && window.ProxTracking) {
+    ProxTracking.setRegion(computeROI());
+  }
+});
+
+async function initCameras() {
+  // Get permission first so labels become available
+  let temp;
   try {
-    tempStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    temp = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
   } catch (e) { throw new Error('camera permission denied'); }
   const devices = await navigator.mediaDevices.enumerateDevices();
   const cams = devices.filter(d => d.kind === 'videoinput');
   console.log('available cameras:', cams.map(c => c.label));
-  tempStream.getTracks().forEach(t => t.stop());
+  temp.getTracks().forEach(t => t.stop());
 
-  let chosen = cams[0];
-  const want = params.get('camera');
-  if (want) {
-    const match = cams.find(c => c.label.toLowerCase().includes(want.toLowerCase()));
-    if (match) chosen = match;
-    else console.warn(`no camera matching "${want}", using default`);
+  function pick(substr, fallback) {
+    if (!substr) return fallback;
+    const m = cams.find(c => c.label.toLowerCase().includes(substr.toLowerCase()));
+    if (m) return m;
+    console.warn(`no camera matching "${substr}", using fallback`);
+    return fallback;
   }
-  console.log('using camera:', chosen.label);
 
-  cameraStream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      deviceId: { exact: chosen.deviceId },
-      width:  { ideal: 1280 },
-      height: { ideal: 720 },
-    },
+  const wantTrack = params.get('camera');         // for tracking
+  const wantVideo = params.get('videocam');       // for outgoing video
+  const trackCam  = pick(wantTrack, cams[0]);
+  // If videocam not specified, fall back to tracking camera
+  const videoCam  = wantVideo ? pick(wantVideo, trackCam) : trackCam;
+
+  console.log('tracking camera:', trackCam.label);
+  console.log('video camera:   ', videoCam.label);
+
+  trackingStream = await navigator.mediaDevices.getUserMedia({
+    video: { deviceId: { exact: trackCam.deviceId }, width: {ideal:1280}, height: {ideal:720} },
     audio: false,
   });
-  localVideo.srcObject = cameraStream;
+  localVideo.srcObject = trackingStream;
   await new Promise(r => localVideo.onloadedmetadata = r);
   await localVideo.play();
+
+  if (videoCam.deviceId !== trackCam.deviceId) {
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: { exact: videoCam.deviceId }, width: {ideal:1280}, height: {ideal:720} },
+      audio: false,
+    });
+  } else {
+    videoStream = trackingStream;
+  }
 }
 
-// Compute the ROI rect in video coords from the area config.
-// areaWidth is in width-fractions; the height needs to account for both
-// the desired aspect (16:9) AND the video's native aspect (also 16:9), so
-// that what we get is a real-world 16:9 rectangle on the floor.
 function computeROI() {
   const vw = localVideo.videoWidth  || 1280;
   const vh = localVideo.videoHeight || 720;
-  const videoAspect = vw / vh;   // ~1.78 for 16:9
+  const videoAspect = vw / vh;
   const w = CONFIG.areaWidth;
-  // Real-world height fraction:
-  //   real_h_fraction = w * videoAspect / areaAspect
-  // Worked example: areaAspect = 16/9 = videoAspect → height = w
-  //   In other words, w fills the same fraction of height as of width
-  //   when the area aspect matches the video aspect.
   const h = w * videoAspect / CONFIG.areaAspect;
   return {
     x: CONFIG.areaCenterX - w / 2,
@@ -124,26 +178,15 @@ function computeROI() {
   };
 }
 
-// ─── Map video-coord ROI to on-screen pixel rect ─────────────────────────
-// No mirror — display shows raw camera feed, so video coords map directly.
 function roiScreenRect() {
   const vw = localVideo.videoWidth, vh = localVideo.videoHeight;
   if (!vw || !vh) return { x: 0, y: 0, w: 0, h: 0 };
-
   const screenW = innerWidth, screenH = innerHeight;
   const scale = Math.max(screenW / vw, screenH / vh);
-  const displayedW = vw * scale;
-  const displayedH = vh * scale;
-  const offsetX = (screenW - displayedW) / 2;
-  const offsetY = (screenH - displayedH) / 2;
-
+  const dW = vw * scale, dH = vh * scale;
+  const oX = (screenW - dW) / 2, oY = (screenH - dH) / 2;
   const R = computeROI();
-  const x = offsetX + R.x * displayedW;
-  const y = offsetY + R.y * displayedH;
-  const w = R.w * displayedW;
-  const h = R.h * displayedH;
-
-  return { x, y, w, h };
+  return { x: oX + R.x*dW, y: oY + R.y*dH, w: R.w*dW, h: R.h*dH };
 }
 
 function onPoint(p) {
@@ -185,13 +228,69 @@ function initVideoRTC() {
     peerVideo.play().catch(err => console.error('peer video play:', err));
   });
   ProxNet.on('start_video_call', (m) => {
-    ProxRTCVideo.start({ role: m.role, localStream: cameraStream });
+    ProxRTCVideo.start({ role: m.role, localStream: videoStream });
   });
   ProxNet.on('end_video_call', () => {
     ProxRTCVideo.stop();
     peerVideo.srcObject = null;
   });
   ProxNet.on('rtc_video_signal', (m) => ProxRTCVideo.handleSignal(m));
+}
+
+// ─── Projector relay: send video to projectors on the peer's side ────────
+function initProjectorRelay() {
+  ProxNet.on('start_projector_video', async (m) => {
+    // The peer side has a projector; we are the source of video for it
+    const projectorId = m.projectorId;
+    if (!projectorId || !videoStream) return;
+    if (projectorPCs.has(projectorId)) return;  // already streaming
+
+    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    projectorPCs.set(projectorId, pc);
+    videoStream.getTracks().forEach(t => pc.addTrack(t, videoStream));
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        ProxNet.send('rtc_projector_signal', {
+          targetProjectorId: projectorId,
+          kind: 'ice',
+          candidate: e.candidate,
+        });
+      }
+    };
+    pc.onconnectionstatechange = () => {
+      console.log(`projector ${projectorId} pc:`, pc.connectionState);
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    ProxNet.send('rtc_projector_signal', {
+      targetProjectorId: projectorId,
+      kind: 'offer',
+      sdp: offer,
+    });
+  });
+
+  ProxNet.on('rtc_projector_signal', async (m) => {
+    // Answer/ICE coming back from the projector
+    const projectorId = m.fromProjectorId;
+    const pc = projectorPCs.get(projectorId);
+    if (!pc) return;
+    try {
+      if (m.kind === 'answer') {
+        await pc.setRemoteDescription(new RTCSessionDescription(m.sdp));
+      } else if (m.kind === 'ice') {
+        await pc.addIceCandidate(new RTCIceCandidate(m.candidate));
+      }
+    } catch (err) {
+      console.error('projector signal err:', err);
+    }
+  });
+
+  ProxNet.on('projector_left', (m) => {
+    const pc = projectorPCs.get(m.projectorId);
+    if (pc) { try { pc.close(); } catch {} }
+    projectorPCs.delete(m.projectorId);
+  });
 }
 
 function updateVideoOpacity() {
@@ -215,24 +314,40 @@ function initQR() {
     if (qr.isDark(r, c)) ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
 }
 
+// Each session has a fixed color — A is red, B is blue. So your own shadow
+// uses your session's color, and your peer's shadow uses theirs.
+const MY_COLOR   = SESSION === 'A' ? '255,40,40' : '0,80,255';
+const PEER_COLOR = SESSION === 'A' ? '0,80,255' : '255,40,40';
+
 function renderLoop() {
   ctx2d.clearRect(0, 0, innerWidth, innerHeight);
   const sq = roiScreenRect();
-  ctx2d.strokeStyle = (currentDist !== null && currentDist < 0.10) ? '#8f8' : '#888';
-  ctx2d.lineWidth = 2;
-  ctx2d.strokeRect(sq.x, sq.y, sq.w, sq.h);
+
   if (myFingerSquare)
-    drawDot(sq.x + myFingerSquare.x * sq.w, sq.y + myFingerSquare.y * sq.h, '#fff', 'you');
-  if (peerFingerSquare)
-    drawDot(sq.x + peerFingerSquare.x * sq.w, sq.y + peerFingerSquare.y * sq.h, '#8cf', 'them');
+    drawShadow(sq.x + myFingerSquare.x * sq.w, sq.y + myFingerSquare.y * sq.h, 1.0, MY_COLOR);
+
+  if (peerFingerSquare && currentDist !== null) {
+    const proximity = Math.pow(1 - Math.min(1, currentDist), CONFIG.videoCurve);
+    drawShadow(
+      sq.x + peerFingerSquare.x * sq.w,
+      sq.y + peerFingerSquare.y * sq.h,
+      proximity,
+      PEER_COLOR
+    );
+  }
+
   requestAnimationFrame(renderLoop);
 }
 
-function drawDot(x, y, color, label) {
-  ctx2d.fillStyle = color;
-  ctx2d.beginPath(); ctx2d.arc(x, y, 12, 0, Math.PI * 2); ctx2d.fill();
-  ctx2d.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx2d.font = '10px sans-serif';
-  ctx2d.textAlign = 'center';
-  ctx2d.fillText(label, x, y + 4);
+function drawShadow(x, y, intensity, rgb) {
+  const r = CONFIG.shadowRadius;
+  const grad = ctx2d.createRadialGradient(x, y, 0, x, y, r);
+  const a = CONFIG.shadowMaxOpacity * Math.min(1, Math.max(0, intensity));
+  grad.addColorStop(0,   `rgba(${rgb},${a})`);
+  grad.addColorStop(0.5, `rgba(${rgb},${a * 0.4})`);
+  grad.addColorStop(1,   `rgba(${rgb},0)`);
+  ctx2d.fillStyle = grad;
+  ctx2d.beginPath();
+  ctx2d.arc(x, y, r, 0, Math.PI * 2);
+  ctx2d.fill();
 }

@@ -15,12 +15,8 @@
 </div>
 
 <div id="stage" class="stage">
-  <!-- Hidden local video — feeds MediaPipe tracking, never visible -->
   <video id="local-video" playsinline muted></video>
-
-  <!-- Peer video — full screen, opacity controlled by JS based on distance -->
   <video id="peer-video" playsinline autoplay muted></video>
-
   <canvas id="overlay"></canvas>
 
   <div id="hud">
@@ -38,15 +34,36 @@
   </div>
 </div>
 
-<!-- Vendor libs -->
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 <script src="/vendor/qrcode.min.js"></script>
 
-<!-- Modules -->
+<!--
+  Tracker is selected via URL param: ?tracker=hat (default) or ?tracker=finger.
+  We load both vendor scripts unconditionally; only the selected tracker
+  module is loaded.
+-->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
 <script src="/js/net.js"></script>
-<script src="/js/tracking.js"></script>
-<script src="/js/rtc-video.js"></script>
-<script src="/js/laptop.js"></script>
+<script>
+// Pick the tracker module based on URL param
+(function () {
+  const tracker = (new URLSearchParams(location.search).get('tracker') || 'hat').toLowerCase();
+  const src = tracker === 'finger' ? '/js/tracking-finger.js' : '/js/tracking.js';
+  const s = document.createElement('script');
+  s.src = src;
+  s.onload = () => {
+    const main = document.createElement('script');
+    main.src = '/js/rtc-video.js';
+    main.onload = () => {
+      const lap = document.createElement('script');
+      lap.src = '/js/laptop.js';
+      document.body.appendChild(lap);
+    };
+    document.body.appendChild(main);
+  };
+  document.body.appendChild(s);
+})();
+</script>
 </body>
 </html>
